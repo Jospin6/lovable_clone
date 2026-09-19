@@ -1,232 +1,147 @@
+import asyncio
+import os
+from functools import lru_cache
+from pathlib import Path
+
 from dotenv import load_dotenv
-from langchain_groq import ChatGroq
+from langchain.agents import create_agent
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
-from langchain.agents import create_agent
 
-from backend.agent.prompts import (
-    architect_prompt,
-    coder_system_prompt,
-    planner_prompt,
-)
-from backend.agent.state import (
-    AgentState,
-    CoderState,
-    Plan,
-    TaskPlan,
-)
+from backend.agent.prompts import architect_prompt, coder_system_prompt, planner_prompt
+from backend.agent.state import AgentState, CoderState, Plan, TaskPlan
 from backend.agent.tools import (
-    get_current_directory,
-    list_files,
-    read_file,
-    write_file,
-    safe_read_file,
+    get_current_directory, list_files, read_file, safe_path_for_project,
+    safe_read_file, write_file,
 )
+from backend.agent.workspace import emit
+
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+
+BROWSER_CONTRACT = """
+RUNTIME CONSTRAINTS (mandatory for this browser preview):
+Build a complete, responsive, polished static website using HTML, CSS and vanilla
+JavaScript. The entry point MUST be index.html at the project root. Create it FIRST
+so the user can see the site while the other files are being generated. Reference
+separate CSS files and classic deferred JavaScript files with relative paths.
+No npm, framework, JSX, TypeScript, server, ES module imports, CSS @import, fetch,
+service workers, localStorage or cookies: the preview runs in an isolated iframe.
+Use in-memory state for interactions. Use inline SVG or HTTPS image URLs if useful.
+Keep navigation on one page using section anchors. Never simulate a working payment,
+authentication, or server API: make the limits explicit in the generated interface.
+Use the language of the user's request. Usually 3 to 6 files are enough; maximum 24.
+For edits, inspect and preserve existing files and features, changing only what the
+user requests. Include all files that are still needed in the updated plan.
+"""
 
 
-load_dotenv()
-
-
-llm = ChatOpenAI(
-    model="gpt-4o",
-    temperature=0.3,
-)
-
-
-# Utilise le JSON Schema natif au lieu du tool calling.
-planner_llm = llm.with_structured_output(
-    Plan,
-    method="json_schema",
-)
-
-architect_llm = llm.with_structured_output(
-    TaskPlan,
-    method="json_schema",
-)
-
-
-def planner_agent(state: AgentState) -> dict:
-    user_prompt = state["user_prompt"]
-
-    response = planner_llm.invoke(
-        planner_prompt(user_prompt)
+@lru_cache(maxsize=1)
+def get_llm():
+    # Lazy initialization lets /health work before a key is configured.
+    return ChatOpenAI(
+        model=os.getenv("OPENAI_MODEL", "gpt-4o"), temperature=0.3,
+        streaming=True, timeout=120, max_retries=1,
     )
 
-    if response is None:
-        raise ValueError(
-            "Planner agent failed to generate a plan."
-        )
 
-    return {
-        "plan": response,
-    }
-
-
-def architect_agent(state: AgentState) -> dict:
-    plan = state["plan"]
-
-    response = architect_llm.invoke(
-        architect_prompt(plan)
-    )
-
-    if response is None:
-        raise ValueError(
-            "Architect agent failed to generate a task plan."
-        )
-
-    return {
-        "task_plan": response,
-    }
+async def planner_agent(state: AgentState) -> dict:
+    emit({"type": "stage", "stage": "planning", "message": "Je prépare le plan de votre site."})
+    prompt = planner_prompt(state["user_prompt"])
+    if state.get("browser_preview"):
+        prompt += BROWSER_CONTRACT
+    response = await get_llm().with_structured_output(Plan, method="json_schema").ainvoke(prompt)
+    if not response or not 1 <= len(response.files) <= 24:
+        raise ValueError("The planner must return between 1 and 24 files.")
+    paths = [safe_path_for_project(file.path) for file in response.files]
+    if len(paths) != len(set(paths)):
+        raise ValueError("The plan contains duplicate paths.")
+    if state.get("browser_preview") and safe_path_for_project("index.html") not in paths:
+        raise ValueError("The preview requires index.html.")
+    emit({"type": "plan", "plan": response.model_dump()})
+    return {"plan": response}
 
 
+async def architect_agent(state: AgentState) -> dict:
+    emit({"type": "stage", "stage": "architecture", "message": "J’organise les pages et les fichiers."})
+    prompt = architect_prompt(state["plan"])
+    if state.get("browser_preview"):
+        prompt += BROWSER_CONTRACT
+    response = await get_llm().with_structured_output(TaskPlan, method="json_schema").ainvoke(prompt)
+    if not response or not response.implementation_steps:
+        raise ValueError("The architect returned no implementation steps.")
+    planned = {safe_path_for_project(file.path) for file in state["plan"].files}
+    steps = response.implementation_steps
+    targets = [safe_path_for_project(step.filepath) for step in steps]
+    if set(targets) != planned or len(targets) != len(planned):
+        raise ValueError("The architecture must implement each planned file exactly once.")
+    if state.get("browser_preview"):
+        steps.sort(key=lambda step: safe_path_for_project(step.filepath) != safe_path_for_project("index.html"))
+    emit({"type": "tasks", "tasks": response.model_dump()["implementation_steps"]})
+    return {"task_plan": response}
 
-def coder_agent(state: AgentState) -> dict:
-    coder_state = state.get("coder_state")
 
-    if coder_state is None:
-        coder_state = CoderState(
-            task_plan=state["task_plan"],
-            current_step_idx=0,
-            current_file_content=None,
-        )
-
+async def coder_agent(state: AgentState) -> dict:
+    coder_state = state.get("coder_state") or CoderState(task_plan=state["task_plan"])
     steps = coder_state.task_plan.implementation_steps
-
     if coder_state.current_step_idx >= len(steps):
-        return {
-            "coder_state": coder_state,
-            "status": "DONE",
-        }
+        return {"coder_state": coder_state, "status": "DONE"}
 
     current_task = steps[coder_state.current_step_idx]
-
-    existing_content = safe_read_file(
-        current_task.filepath
-    )
-
-    coder_state.current_file_content = existing_content
-
+    emit({
+        "type": "stage", "stage": "coding", "path": current_task.filepath,
+        "step": coder_state.current_step_idx + 1, "total": len(steps),
+        "message": f"Création de {current_task.filepath}",
+    })
     user_prompt = f"""
+        USER REQUEST AND PROJECT CONTEXT:
+        {state['user_prompt']}
+
         GLOBAL PROJECT PLAN:
         {state['plan'].model_dump_json(indent=2)}
 
         ALL IMPLEMENTATION STEPS:
-        {steps}
+        {coder_state.task_plan.model_dump_json(indent=2)}
 
-        CURRENT STEP INDEX:
-        {coder_state.current_step_idx}
-
-        CURRENT TARGET FILE:
-        {current_task.filepath}
-
-        CURRENT TASK:
-        {current_task.task_description}
-
+        CURRENT TARGET FILE: {current_task.filepath}
+        CURRENT TASK: {current_task.task_description}
         EXISTING TARGET FILE CONTENT:
-        {existing_content if existing_content else "[The file does not exist yet]"}
+        {safe_read_file(current_task.filepath) or '[The file does not exist yet]'}
 
-        INSTRUCTIONS:
-        - Implement the current task as part of the complete application.
-        - Inspect related existing files using read_file before making assumptions.
-        - Check the available project structure using list_files.
-        - Make sure this file is connected to the other project files.
-        - Use exactly the paths, imports, selectors, exports, and interfaces specified
-        by the architecture.
-        - If an existing related file is missing a required import or reference, update
-        that file as well while preserving its useful content.
-        - Write complete final file contents using write_file.
-        - Do not only describe the changes.
+        Inspect related existing files with read_file and list_files. Implement this task
+        as part of the complete application. Use exactly the planned interfaces and paths.
+        Write complete file contents using write_file. Do not only describe the changes.
     """
-
-    coder_tools = [
-        write_file,
-        read_file,
-        list_files,
-        get_current_directory,
-    ]
-
+    system_prompt = coder_system_prompt()
+    if state.get("browser_preview"):
+        system_prompt += BROWSER_CONTRACT
     react_agent = create_agent(
-        model=llm,
-        tools=coder_tools,
+        model=get_llm(), tools=[write_file, read_file, list_files, get_current_directory],
+        system_prompt=system_prompt,
     )
-
-    # La clé correcte est "messages", avec un s.
-    result = react_agent.invoke(
-        {
-            "messages": [
-                {
-                    "role": "system",
-                    "content": coder_system_prompt(),
-                },
-                {
-                    "role": "user",
-                    "content": user_prompt,
-                },
-            ]
-        }
+    await react_agent.ainvoke(
+        {"messages": [{"role": "user", "content": user_prompt}]},
+        {"recursion_limit": 40},
     )
-
-    if not result:
-        raise ValueError(
-            f"Coder failed while implementing: "
-            f"{current_task.filepath}"
-        )
-
-    coder_state.current_step_idx += 1
-    coder_state.current_file_content = None
-
-    is_finished = (
-        coder_state.current_step_idx >= len(steps)
-    )
-
-    return {
-        "coder_state": coder_state,
-        "status": "DONE" if is_finished else "CODING",
-    }
-
-
-def coder_router(state: AgentState) -> str:
-    if state.get("status") == "DONE":
-        return "END"
-
-    return "coder"
+    if not safe_read_file(current_task.filepath).strip():
+        raise ValueError(f"The coder did not write {current_task.filepath}.")
+    coder_state = coder_state.model_copy(update={"current_step_idx": coder_state.current_step_idx + 1})
+    emit({"type": "task_done", "path": current_task.filepath, "step": coder_state.current_step_idx, "total": len(steps)})
+    return {"coder_state": coder_state, "status": "DONE" if coder_state.current_step_idx >= len(steps) else "CODING"}
 
 
 graph = StateGraph(AgentState)
-
 graph.add_node("planner", planner_agent)
 graph.add_node("architect", architect_agent)
 graph.add_node("coder", coder_agent)
-
 graph.add_edge("planner", "architect")
 graph.add_edge("architect", "coder")
-
-graph.add_conditional_edges(
-    "coder",
-    coder_router,
-    {
-        "END": END,
-        "coder": "coder",
-    },
-)
-
+graph.add_conditional_edges("coder", lambda state: END if state.get("status") == "DONE" else "coder")
 graph.set_entry_point("planner")
-
 agent = graph.compile()
 
-
 if __name__ == "__main__":
-    initial_state: AgentState = {
-        "user_prompt": (
-            "Create a simple calculator web application well functioning"
-        )
-    }
-
-    result = agent.invoke(
-        initial_state,
-        {
-            "recursion_limit": 100,
-        },
-    )
-
+    result = asyncio.run(agent.ainvoke(
+        {"user_prompt": "Create a simple working calculator website", "browser_preview": True},
+        {"recursion_limit": 100},
+    ))
     print(result)

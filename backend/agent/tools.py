@@ -1,14 +1,7 @@
 from pathlib import Path
 
 from langchain_core.tools import tool
-
-
-PROJECT_ROOT = (
-    Path(__file__).resolve().parents[2]
-    / "generated_project"
-).resolve()
-
-PROJECT_ROOT.mkdir(parents=True, exist_ok=True)
+from backend.agent.workspace import emit, project_root
 
 def safe_read_file(path: str) -> str:
     """
@@ -53,6 +46,7 @@ def safe_path_for_project(path: str = ".") -> Path:
     - absolute paths outside generated_project
     """
 
+    root = project_root()
     raw_path = str(path or ".").strip()
 
     if not raw_path:
@@ -65,7 +59,7 @@ def safe_path_for_project(path: str = ".") -> Path:
         not candidate.is_absolute()
         and candidate.parts
         and candidate.parts[0].lower()
-        == PROJECT_ROOT.name.lower()
+        in {root.name.lower(), "generated_project"}
     ):
         candidate = Path(*candidate.parts[1:])
 
@@ -73,11 +67,11 @@ def safe_path_for_project(path: str = ".") -> Path:
         resolved_path = candidate.resolve()
     else:
         resolved_path = (
-            PROJECT_ROOT / candidate
+            root / candidate
         ).resolve()
 
     try:
-        resolved_path.relative_to(PROJECT_ROOT)
+        resolved_path.relative_to(root)
     except ValueError as error:
         raise ValueError(
             "Path must be relative to generated_project. "
@@ -110,7 +104,7 @@ def list_files(directory: str = ".") -> str:
 
     if not safe_directory.is_dir():
         relative_path = safe_directory.relative_to(
-            PROJECT_ROOT
+            project_root()
         ).as_posix()
 
         return (
@@ -128,7 +122,7 @@ def list_files(directory: str = ".") -> str:
 
     if not entries:
         relative_directory = safe_directory.relative_to(
-            PROJECT_ROOT
+            project_root()
         ).as_posix()
 
         return (
@@ -140,7 +134,7 @@ def list_files(directory: str = ".") -> str:
 
     for item in entries:
         relative_path = item.relative_to(
-            PROJECT_ROOT
+            project_root()
         ).as_posix()
 
         item_type = (
@@ -176,7 +170,7 @@ def read_file(path: str) -> str:
 
     if not safe_file.is_file():
         relative_path = safe_file.relative_to(
-            PROJECT_ROOT
+            project_root()
         ).as_posix()
 
         return (
@@ -204,6 +198,9 @@ def write_file(path: str, content: str) -> str:
     Use a project-relative path.
     """
 
+    if len(content.encode("utf-8")) > 1_000_000:
+        return "File is too large. Keep each file below 1 MB."
+
     try:
         safe_file = safe_path_for_project(path)
     except ValueError as error:
@@ -230,8 +227,10 @@ def write_file(path: str, content: str) -> str:
         return f"Unable to write {path!r}: {error}"
 
     relative_path = safe_file.relative_to(
-        PROJECT_ROOT
+        project_root()
     ).as_posix()
+
+    emit({"type": "file", "path": relative_path, "content": content})
 
     return (
         f"File written successfully: {relative_path}"

@@ -3,3 +3,8 @@ backend/.env
 
 frontend/.env
 frontend/node_modules
+
+generated_projects/
+__pycache__/
+*.pyc
+.test-artifacts/

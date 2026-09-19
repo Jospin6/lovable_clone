@@ -73,6 +73,7 @@ class CoderState(BaseModel):
 
 class AgentState(TypedDict, total=False):
     user_prompt: str
+    browser_preview: bool
     plan: Plan
     task_plan: TaskPlan
     coder_state: CoderState

@@ -78,7 +78,7 @@ export function Builder() {
   return <div className={`app-shell ${inProject ? "project-open" : ""}`}>
     {sidebarOpen && <button className="sidebar-backdrop" aria-label="Fermer le menu" onClick={() => setSidebarOpen(false)} />}
     <aside className={`sidebar ${sidebarOpen ? "is-open" : ""}`}>
-      <button className="brand" onClick={startNew} disabled={busy} aria-label="Atelier, accueil"><BrandMark /><span>atelier<span className="brand-period">.</span></span></button>
+      <button className="brand" onClick={startNew} disabled={busy} aria-label="Atelier, accueil"><BrandMark /><span>Jenga<span className="brand-period">.</span></span></button>
       <div className="workspace-selector"><span className="workspace-avatar">V</span><div>Votre espace<span>Personnel</span></div><span className="local-badge">LOCAL</span></div>
       <nav className="main-nav" aria-label="Navigation principale">
         <button className={`nav-button ${view === "home" && !inProject ? "current" : ""}`} onClick={startNew} disabled={busy}><Icon name="plus" /><span>Nouveau projet</span><span className="nav-shortcut">＋</span></button>

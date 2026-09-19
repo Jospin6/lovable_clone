@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Atelier — Donnez forme à vos idées",
+  title: "Jenga — Donnez forme à vos idées",
   description: "Créez votre site avec l’IA. Décrivez votre idée, suivez le code et découvrez l’aperçu en direct.",
 };
 

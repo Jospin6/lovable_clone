@@ -1,4 +1,4 @@
-# Atelier — générateur de sites avec aperçu en direct
+# Jenga — générateur de sites avec aperçu en direct
 
 Interface Next.js reliée à l’agent LangGraph existant : prompt → planificateur → architecte → codeur. L’API FastAPI diffuse les étapes et le contenu des fichiers en SSE. L’interface affiche la conversation, le code et un aperçu qui se met à jour pendant la création.
 

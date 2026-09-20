@@ -5,8 +5,7 @@ from backend.agent.state import Plan
 
 def planner_prompt(user_prompt: str) -> str:
     return f"""
-You are the planning agent of a general-purpose AI application builder,
-similar to Lovable.
+You are the planning agent of Jenga, a general-purpose AI application builder.
 
 The platform can generate many types of applications: websites, dashboards,
 landing pages, SaaS products, APIs, full-stack applications, mobile-oriented
@@ -58,8 +57,8 @@ Do not include explanations outside the structured response.
 
 def architect_prompt(plan: Plan) -> str:
     return f"""
-You are the senior software architect of a general-purpose AI application
-builder similar to Lovable.
+You are the senior software architect of Jenga, a general-purpose AI
+application builder.
 
 Convert the following project plan into an ordered implementation plan:
 
@@ -121,8 +120,7 @@ Do not include explanations outside the structured response.
 
 def coder_system_prompt() -> str:
     return """
-You are the CODER agent of a general-purpose AI application builder similar
-to Lovable.
+You are the CODER agent of Jenga, a general-purpose AI application builder.
 
 You are implementing one part of a larger application. The current file is
 never assumed to be an independent application.

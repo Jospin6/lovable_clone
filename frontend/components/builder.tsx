@@ -78,14 +78,14 @@ export function Builder() {
   return <div className={`app-shell ${inProject ? "project-open" : ""}`}>
     {sidebarOpen && <button className="sidebar-backdrop" aria-label="Fermer le menu" onClick={() => setSidebarOpen(false)} />}
     <aside className={`sidebar ${sidebarOpen ? "is-open" : ""}`}>
-      <button className="brand" onClick={startNew} disabled={busy} aria-label="Atelier, accueil"><BrandMark /><span>Jenga<span className="brand-period">.</span></span></button>
+      <button className="brand" onClick={startNew} disabled={busy} aria-label="Jenga, accueil"><BrandMark /><span>Jenga<span className="brand-period">.</span></span></button>
       <div className="workspace-selector"><span className="workspace-avatar">V</span><div>Votre espace<span>Personnel</span></div><span className="local-badge">LOCAL</span></div>
       <nav className="main-nav" aria-label="Navigation principale">
         <button className={`nav-button ${view === "home" && !inProject ? "current" : ""}`} onClick={startNew} disabled={busy}><Icon name="plus" /><span>Nouveau projet</span><span className="nav-shortcut">＋</span></button>
         <button className={`nav-button ${view === "projects" ? "current" : ""}`} onClick={() => { setView("projects"); setSidebarOpen(false); }} disabled={busy}><Icon name="grid" /><span>Mes projets</span>{state.recent.length > 0 && <span className="nav-count">{state.recent.length}</span>}</button>
       </nav>
       <div className="recent-section"><span className="sidebar-label">RÉCENTS</span>{state.recent.length ? <div className="recent-list">{state.recent.slice(0, 7).map((project) => <button key={project.id} className={`recent-item ${state.id === project.id && inProject ? "selected" : ""}`} onClick={() => open(project.id)} disabled={busy} title={project.name}><Icon name="folder" size={16} /><span>{project.name}</span></button>)}</div> : <div className="recent-empty"><Icon name="folder" size={21} /><p>Vos prochaines idées<br />trouveront leur place ici.</p></div>}</div>
-      <div className="sidebar-bottom"><div className="small-note"><Icon name="spark" size={17} /><p>Une idée suffit.<br /><span>La suite se crée ensemble.</span></p></div><div className="agent-connection" role="status"><i className={health} /><span>{health === "ready" ? "Agent connecté" : health === "offline" ? "Agent hors ligne" : health === "unconfigured" ? "Clé API à configurer" : "Connexion à l’agent…"}</span><span className="connection-label">v1.0</span></div><div className="profile"><div className="profile-avatar">V</div><div>Votre atelier<span>Espace de création local</span></div><Icon name="spark" size={15} /></div></div>
+      <div className="sidebar-bottom"><div className="small-note"><Icon name="spark" size={17} /><p>Une idée suffit.<br /><span>La suite se crée ensemble.</span></p></div><div className="agent-connection" role="status"><i className={health} /><span>{health === "ready" ? "Agent connecté" : health === "offline" ? "Agent hors ligne" : health === "unconfigured" ? "Clé API à configurer" : "Connexion à l’agent…"}</span><span className="connection-label">v1.0</span></div><div className="profile"><div className="profile-avatar">V</div><div>Espace Jenga<span>Espace de création local</span></div><Icon name="spark" size={15} /></div></div>
     </aside>
 
     <main className="main-area">

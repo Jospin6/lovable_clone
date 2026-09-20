@@ -17,7 +17,7 @@ from backend.agent.workspace import project_workspace
 from backend.streaming import FileDrafts, sse
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
-app = FastAPI(title="Atelier — Website builder", version="1.0.0")
+app = FastAPI(title="Jenga — Website builder", version="1.0.0")
 logger = logging.getLogger(__name__)
 active_projects: set[str] = set()
 
@@ -71,7 +71,7 @@ async def download(project_id: UUID):
         for path, content in files.items():
             bundle.writestr(path, content)
     return Response(archive.getvalue(), media_type="application/zip", headers={
-        "Content-Disposition": f'attachment; filename="atelier-{project_id}.zip"',
+        "Content-Disposition": f'attachment; filename="jenga-{project_id}.zip"',
         "Cache-Control": "no-store",
     })
 

@@ -1,4 +1,4 @@
-# Frontend Atelier
+# Frontend Jenga
 
 Interface Next.js App Router de création de sites : accueil, prompts, streaming SSE, code, aperçu isolé, vue mobile et export ZIP.
 

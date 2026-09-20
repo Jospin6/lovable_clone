@@ -54,6 +54,7 @@ function reducer(state: State, action: Action): State {
   }
 }
 
+// Keep the legacy key so existing projects remain available after the Jenga rename.
 const STORAGE_KEY = "atelier.projects.v1";
 
 export function useBuilder() {
